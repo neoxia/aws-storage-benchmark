@@ -54,51 +54,56 @@ volumes = conn.get_all_volumes(filters={'attachment.instance-id': meta['instance
 log('Initialize JSON document')
 doc = {'meta' : meta }
 
+fstype = ['ext4 -F', 'xfs -f']
+blocksize = ['4k', '32k', '512k', '1M']
+
 for volume in volumes :
     if meta['block-device-mapping']['root'] != volume.attach_data.device:
-        log('Test %s' % volume.id)
-        try : 
-            log('EXT4 Format volume')
-            cmd = "mkfs.ext4 -F %s" % volume.attach_data.device
-            retcode = run(cmd).wait()
-            if (retcode) :
-                raise OSError('Fail to format volume')
+        for fs in fstype:
+            for bs in blocksize:
+                log('Test %s' % volume.id)
+                try : 
+                    log('%s Format volume' % fs)
+                    cmd = "mkfs.%s %s" % (fs, volume.attach_data.device)
+                    retcode = run(cmd).wait()
+                    if (retcode) :
+                        raise OSError('Fail to format volume %s' % cmd)
 
-            log('Mount volume')
-            cmd = "mount %s /mnt" % volume.attach_data.device
-            retcode = run(cmd).wait()
-            if (retcode) :
-                raise OSError('Fail to mount volume')
+                    log('Mount volume')
+                    cmd = "mount %s /mnt" % volume.attach_data.device
+                    retcode = run(cmd).wait()
+                    if (retcode) :
+                        raise OSError('Fail to mount volume')
 
-            log('Testing volume')
-            cmd = "fio --directory=/mnt --output-format=json --name %s --direct=1 --ioengine=libaio --refill_buffers --scramble_buffers=1 --blocksize=4k --rw=randrw --numjobs=1 --iodepth=64 --size=1G" % volume.id
-            proc = run(cmd)
-            retcode = proc.wait()
-            if (retcode) : 
-                raise OSError('Fail exec fio test')
-                
+                    log('Testing volume')
+                    cmd = "fio --directory=/mnt --output-format=json --name %s --direct=1 --ioengine=libaio --refill_buffers --scramble_buffers=1 --blocksize=%s --rw=randrw --numjobs=1 --iodepth=64 --size=1M" % (volume.id, bs)
+                    proc = run(cmd)
+                    retcode = proc.wait()
+                    if (retcode) : 
+                        raise OSError('Fail exec fio test')
+                        
 
-            log('Send test metrics at %s' % ES_ADDR)
-            fio_result = json.loads(proc.stdout.read())
-            for job_result in fio_result['jobs'] :
-                doc['result'] = job_result 
-                doc['volume'] = {
-                    'volume_id' : str(volume.id), 
-                    'volume_attach_device' : volume.attach_data.device, 
-                    'volume_size' : str(volume.size), 
-                    'volume_zone' : str(volume.zone), 
-                    'volume_type' : str(volume.type), 
-                    'volume_fs' : 'ext4',
-                    'volume_iops' : str(volume.iops),
-                    'volume_encrypted' : str(volume.encrypted)
-                }    
+                    log('Send test metrics at %s' % ES_ADDR)
+                    fio_result = json.loads(proc.stdout.read())
+                    for job_result in fio_result['jobs'] :
+                        doc['result'] = job_result 
+                        doc['volume'] = {
+                            'volume_id' : str(volume.id), 
+                            'volume_attach_device' : volume.attach_data.device, 
+                            'volume_size' : str(volume.size), 
+                            'volume_zone' : str(volume.zone), 
+                            'volume_type' : str(volume.type), 
+                            'volume_fs' : 'ext4',
+                            'volume_iops' : str(volume.iops),
+                            'volume_encrypted' : str(volume.encrypted)
+                        }    
 
-                doc["creation-date"] = datetime.now()
-                res = es.index(index='benchmark', doc_type='metric', id="",  body=doc)
+                        doc["creation-date"] = datetime.now()
+                        res = es.index(index='benchmark', doc_type='metric', id="",  body=doc)
 
-        except OSError as e :
-            log('%s' % e, 'ERROR', volume.id)
+                except OSError as e :
+                    log('%s' % e, 'ERROR', volume.id)
 
-        finally :
-            log('Umount filesystem')
-            run('umount /mnt').wait()
+                finally :
+                    log('Umount filesystem')
+                    run('umount /mnt').wait()
