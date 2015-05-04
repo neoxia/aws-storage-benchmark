@@ -38,14 +38,14 @@ def log(text, severity = 'INFO', volume = None):
     print('[%s][%s%s%s] %s' % (sys.argv[0], color[severity] ,severity, color['ENDC'], text))
     
     # Send log to elasticsearch
-    doc = {}
-    doc['date'] = datetime.now()
-    doc['severity'] = severity
-    doc['instance-id'] = meta['instance-id']
-    doc['instance-type'] = meta['instance-type']
-    doc['message'] = text
-    doc['volume-id'] = volume
-    res = es.index(index='logs', doc_type='log', id="",  body=doc)
+    log = {}
+    log['date'] = datetime.now()
+    log['severity'] = severity
+    log['instance-id'] = meta['instance-id']
+    log['instance-type'] = meta['instance-type']
+    log['message'] = text
+    log['volume-id'] = volume
+    res = es.index(index='logs', doc_type='log', id="",  body=log)
 
 conn = boto.ec2.connect_to_region(get_region())
 meta = boto.utils.get_instance_metadata()
@@ -53,51 +53,52 @@ volumes = conn.get_all_volumes(filters={'attachment.instance-id': meta['instance
 
 log('Initialize JSON document')
 doc = {'meta' : meta }
-doc["creation-date"] = datetime.now()
-
 
 for volume in volumes :
-    log('Test %s' % volume.id)
-    try : 
-        log('EXT4 Format volume')
-        cmd = "mkfs.ext4 -F %s" % volume.attach_data.device
-        retcode = run(cmd).wait()
-        if (retcode) :
-            raise OSError('Fail to format volume')
+    if meta['block-device-mapping']['root'] != volume.attach_data.device:
+        log('Test %s' % volume.id)
+        try : 
+            log('EXT4 Format volume')
+            cmd = "mkfs.ext4 -F %s" % volume.attach_data.device
+            retcode = run(cmd).wait()
+            if (retcode) :
+                raise OSError('Fail to format volume')
 
-        log('Mount volume')
-        cmd = "mount %s /mnt" % volume.attach_data.device
-        retcode = run(cmd).wait()
-        if (retcode) :
-            raise OSError('Fail to mount volume')
+            log('Mount volume')
+            cmd = "mount %s /mnt" % volume.attach_data.device
+            retcode = run(cmd).wait()
+            if (retcode) :
+                raise OSError('Fail to mount volume')
 
-        log('Testing volume')
-        cmd = "fio --directory=/mnt --size=1M --output-format=json --name %s " % volume.id
-        proc = run(cmd)
-        retcode = proc.wait()
-        if (retcode) : 
-            raise OSError('Fail exec fio test')
-            
+            log('Testing volume')
+            cmd = "fio --directory=/mnt --output-format=json --name %s --direct=1 --ioengine=libaio --refill_buffers --scramble_buffers=1 --blocksize=4k --rw=randrw --numjobs=1 --iodepth=64 --size=1G" % volume.id
+            proc = run(cmd)
+            retcode = proc.wait()
+            if (retcode) : 
+                raise OSError('Fail exec fio test')
+                
 
-        log('Send test metrics at %s' % ES_ADDR)
-        fio_result = json.loads(proc.stdout.read())
-        for job_result in fio_result['jobs'] :
-            doc['result'] = job_result 
-            doc['volume'] = {
-                'volume_id' : str(volume.id), 
-                'volume_attach_device' : volume.attach_data.device, 
-                'volume_size' : str(volume.size), 
-                'volume_zone' : str(volume.zone), 
-                'volume_type' : str(volume.type), 
-                'volume_fs' : 'ext4',
-                'volume_iops' : str(volume.iops),
-                'volume_encrypted' : str(volume.encrypted)
-            }    
-            res = es.index(index='benchmark', doc_type='metric', id="",  body=doc)
+            log('Send test metrics at %s' % ES_ADDR)
+            fio_result = json.loads(proc.stdout.read())
+            for job_result in fio_result['jobs'] :
+                doc['result'] = job_result 
+                doc['volume'] = {
+                    'volume_id' : str(volume.id), 
+                    'volume_attach_device' : volume.attach_data.device, 
+                    'volume_size' : str(volume.size), 
+                    'volume_zone' : str(volume.zone), 
+                    'volume_type' : str(volume.type), 
+                    'volume_fs' : 'ext4',
+                    'volume_iops' : str(volume.iops),
+                    'volume_encrypted' : str(volume.encrypted)
+                }    
 
-    except OSError as e :
-        log('%s' % e, 'ERROR', volume.id)
+                doc["creation-date"] = datetime.now()
+                res = es.index(index='benchmark', doc_type='metric', id="",  body=doc)
 
-    finally :
-        log('Umount filesystem')
-        run('umount /mnt').wait()
+        except OSError as e :
+            log('%s' % e, 'ERROR', volume.id)
+
+        finally :
+            log('Umount filesystem')
+            run('umount /mnt').wait()
