@@ -57,13 +57,30 @@ doc = {'meta' : meta }
 fstype = ['ext4 -F', 'xfs -f']
 blocksize = ['4k', '32k', '512k', '1M']
 
+
+for metakey in meta['block-device-mapping'].keys():
+    if 'ephemeral' in metakey:
+        fakevolume = boto.ec2.volume.Volume()
+        fakevolume.attach_data = boto.ec2.volume.AttachmentSet()
+
+        #Vol
+        fakevolume.id = metakey
+        fakevolume.size = "0"
+        fakevolume.attach_data.device = "/dev/%s" % meta['block-device-mapping'][metakey]
+        fakevolume.zone = requests.get(AZ_ENDPOINT).text
+        fakevolume.type = 'instance-store'
+        fakevolume.iops = -1
+        fakevolume.encrypted = False
+
+        volumes.append(fakevolume)
+
 for volume in volumes :
     if meta['block-device-mapping']['root'] != volume.attach_data.device:
         for fs in fstype:
             for bs in blocksize:
                 log('Test %s' % volume.id)
                 try : 
-                    log('%s Format volume' % fs)
+                    log('%s Format volume' % fs[:-3])
                     cmd = "mkfs.%s %s" % (fs, volume.attach_data.device)
                     retcode = run(cmd).wait()
                     if (retcode) :
@@ -93,7 +110,7 @@ for volume in volumes :
                             'volume_size' : str(volume.size), 
                             'volume_zone' : str(volume.zone), 
                             'volume_type' : str(volume.type), 
-                            'volume_fs' : 'ext4',
+                            'volume_fs' : fs[:-3], # delete option
                             'volume_iops' : str(volume.iops),
                             'volume_encrypted' : str(volume.encrypted)
                         }    
@@ -107,3 +124,5 @@ for volume in volumes :
                 finally :
                     log('Umount filesystem')
                     run('umount /mnt').wait()
+
+conn.stop_instances(instance_ids=[meta['instance-id']])
