@@ -57,20 +57,20 @@ for volume in volumes :
         cmd = "mkfs.ext4 -F %s" % volume.attach_data.device
         retcode = run(cmd).wait()
         if (retcode) :
-            raise Exception('Fail to format volume')
+            raise OSError('Fail to format volume')
 
         log('Mount volume')
         cmd = "mount %s /mnt" % volume.attach_data.device
         retcode = run(cmd).wait()
         if (retcode) :
-            raise Exception('Fail to mount volume')
+            raise OSError('Fail to mount volume')
 
         log('Testing volume')
         cmd = "fio --directory=/mnt --size=1M --output-format=json --name %s " % volume.id
         proc = run(cmd)
         retcode = proc.wait()
         if (retcode) : 
-            raise Exception('Fail exec fio test')
+            raise OSError('Fail exec fio test')
             
 
         log('Send test metrics at %s' % ES_ADDR)
@@ -89,7 +89,7 @@ for volume in volumes :
             }    
             res = es.index(index='benchmark', doc_type='metric', id="",  body=doc)
 
-    except Exception as e :
+    except OSError as e :
         log('%s' % e, 'ERROR', volume.id)
 
     finally :
