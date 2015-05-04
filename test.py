@@ -21,7 +21,7 @@ def get_region():
 def run(cmd):
     return Popen(str(cmd).split(), stdout=PIPE, stderr=PIPE)
 
-def log(text, severity='INFO'):
+def log(text, severity = 'INFO', volume = None):
     #Dummy log
     color = {}
     color['INFO'] = '\033[94m'
@@ -31,6 +31,15 @@ def log(text, severity='INFO'):
 
     print('[%s][%s%s%s] %s' % (sys.argv[0], color[severity] ,severity, color['ENDC'], text))
     
+    # Send log to elasticsearch
+    doc = {}
+    doc['date'] = datetime.now()
+    doc['severity'] = severity
+    doc['instance-id'] = meta['instance-id']
+    doc['instance-type'] = meta['instance-type']
+    doc['message'] = text
+    doc['volume-id'] = volume
+    res = es.index(index='logs', doc_type='log', id="",  body=doc)
 
 conn = boto.ec2.connect_to_region(get_region())
 meta = boto.utils.get_instance_metadata()
@@ -48,20 +57,20 @@ for volume in volumes :
         cmd = "mkfs.ext4 -F %s" % volume.attach_data.device
         retcode = run(cmd).wait()
         if (retcode) :
-            raise Exception
+            raise Exception('Fail to format volume')
 
         log('Mount volume')
         cmd = "mount %s /mnt" % volume.attach_data.device
         retcode = run(cmd).wait()
         if (retcode) :
-            raise Exception
+            raise Exception('Fail to mount volume')
 
         log('Testing volume')
         cmd = "fio --directory=/mnt --size=1M --output-format=json --name %s " % volume.id
         proc = run(cmd)
         retcode = proc.wait()
         if (retcode) : 
-            raise Exception 
+            raise Exception('Fail exec fio test')
             
 
         log('Send test metrics at %s' % ES_ADDR)
@@ -81,7 +90,7 @@ for volume in volumes :
             res = es.index(index='benchmark', doc_type='metric', id="",  body=doc)
 
     except Exception as e :
-        log('Volume %s failed %s' % (volume.id ,str(e)), 'ERROR')
+        log('%s' % e, 'ERROR', volume.id)
 
     finally :
         log('Umount filesystem')
