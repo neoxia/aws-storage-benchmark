@@ -1,12 +1,18 @@
+#!/usr/bin/python
+import sys
+import os
 import boto.ec2
 import boto.utils
 import requests
 import json
-import sys
 
 from datetime import datetime
 from elasticsearch import Elasticsearch
 from subprocess import PIPE, Popen
+
+if os.getuid():
+    raise OSError('You must be root')
+
 
 AZ_ENDPOINT = 'http://169.254.169.254/latest/meta-data/placement/availability-zone/'
 ES_ADDR = 'local.elasticsearch.sudomakeinstall.me:9200'
