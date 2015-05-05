@@ -93,7 +93,7 @@ for volume in volumes :
                         raise OSError('Fail to mount volume')
 
                     log('Testing volume')
-                    cmd = "fio --directory=/mnt --output-format=json --name %s --direct=1 --ioengine=libaio --refill_buffers --scramble_buffers=1 --blocksize=%s --rw=randrw --numjobs=1 --iodepth=64 --size=4G" % (volume.id, bs)
+                    cmd = "fio --directory=/mnt --output-format=json --name %s --direct=1 --ioengine=libaio --refill_buffers --scramble_buffers=1 --blocksize=%s --rw=randrw --numjobs=1 --iodepth=64 --size=4M" % (volume.id, bs)
                     proc = run(cmd)
                     retcode = proc.wait()
                     if (retcode) : 
