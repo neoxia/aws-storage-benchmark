@@ -7,6 +7,7 @@ Tools for performing automated benchmarks of AWS storage systems
 yum update -y
 yum install fio -y
 yum install git -y 
+yum install xfsprogs -y
 pip install elasticsearch
 git clone https://github.com/neoxia/aws-storage-benchmark.git
 python /aws-storage-benchmark/test.py
