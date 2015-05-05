@@ -103,7 +103,8 @@ for volume in volumes :
                     log('Send test metrics at %s' % ES_ADDR)
                     fio_result = json.loads(proc.stdout.read())
                     for job_result in fio_result['jobs'] :
-                        doc['result'] = job_result 
+                        doc['result'] = job_result
+                        doc['block-size'] = bs
                         doc['volume'] = {
                             'volume_id' : str(volume.id), 
                             'volume_attach_device' : volume.attach_data.device, 
