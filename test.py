@@ -54,8 +54,8 @@ volumes = conn.get_all_volumes(filters={'attachment.instance-id': meta['instance
 log('Initialize JSON document')
 doc = {'meta' : meta }
 
-fstype = ['ext4 -F', 'xfs -f']
-blocksize = ['4k', '32k', '512k', '1M']
+fstype = ['ext4 -F']
+blocksize = ['4k','4k','4k','4k']
 
 
 for metakey in meta['block-device-mapping'].keys():
